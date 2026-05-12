@@ -1,0 +1,46 @@
+server:
+  host: localhost
+  port: 8765
+  max_queue_depth: 10
+
+network:
+  default: "6G"
+  profiles:
+    4G:
+      name: "4G LTE"
+      one_way_latency_ms: 25.0
+      bandwidth_gbps: 0.1
+      jitter_ms: 5.0
+      packet_loss_pct: 0.1
+      description: "Legacy LTE — ~50ms RTT"
+    5G:
+      name: "5G NR mmWave"
+      one_way_latency_ms: 4.0
+      bandwidth_gbps: 1.0
+      jitter_ms: 0.5
+      packet_loss_pct: 0.01
+      description: "5G mmWave — ~8ms RTT"
+    6G:
+      name: "6G Sub-THz"
+      one_way_latency_ms: 0.5
+      bandwidth_gbps: 100.0
+      jitter_ms: 0.05
+      packet_loss_pct: 0.001
+      description: "6G Sub-THz — ~1ms RTT"
+
+camera:
+  width: 640
+  height: 480
+  fps: 30
+  jpeg_quality: 85
+
+vision:
+  backend: "simulated"   # simulated | yolov8 | opencv
+  edge_gpu_inference_ms_mean: 4.5
+  edge_gpu_inference_ms_std: 0.8
+  min_confidence: 0.5
+
+demo:
+  auto_cycle: true
+  cycle_interval_seconds: 12
+  log_file: "demo_results.log"

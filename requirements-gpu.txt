@@ -1,0 +1,5 @@
+# Optional: GPU-accelerated vision backends
+ultralytics>=8.0.0      # YOLOv8
+opencv-python-headless>=4.8.0
+streamlit>=1.28.0       # web dashboard
+plotly>=5.0.0
