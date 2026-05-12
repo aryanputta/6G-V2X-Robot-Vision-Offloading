@@ -1,0 +1,35 @@
+version: "3.9"
+
+services:
+  edge-server:
+    build:
+      context: .
+      target: edge-server
+    container_name: 6g-edge-server
+    ports:
+      - "8765:8765"
+    networks:
+      - v2x-net
+    healthcheck:
+      test: ["CMD", "python", "-c",
+             "import socket; s=socket.socket(); s.connect(('localhost',8765)); s.close()"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  robot:
+    build:
+      context: .
+      target: robot
+    container_name: 6g-robot
+    depends_on:
+      edge-server:
+        condition: service_healthy
+    environment:
+      SERVER_URI: ws://edge-server:8765
+    networks:
+      - v2x-net
+
+networks:
+  v2x-net:
+    driver: bridge

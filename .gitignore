@@ -1,0 +1,12 @@
+assets/
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+dist/
+build/
+.env
+*.log
+*.pt
+runs/
+yolov8*.pt
