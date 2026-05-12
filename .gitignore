@@ -1,4 +1,4 @@
-assets/
+assets/*.json
 __pycache__/
 *.pyc
 *.pyo
