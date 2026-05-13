@@ -32,6 +32,43 @@ _ROAD_SCENE_CLASSES = [
 ]
 
 
+class _SimObject:
+    """Persistent simulated road-scene object with smooth motion between frames."""
+
+    def __init__(self, cls_info):
+        self.cls, self.conf_lo, self.conf_hi = cls_info
+        w = random.uniform(0.10, 0.22)
+        h = random.uniform(0.07, 0.15)
+        self.x1 = random.uniform(0.05, 0.70)
+        self.y1 = random.uniform(0.35, 0.70)
+        self.x2 = min(1.0, self.x1 + w)
+        self.y2 = min(1.0, self.y1 + h)
+        self.vx = random.uniform(-0.007, 0.007)
+        self.vy = random.uniform(-0.003, 0.003)
+
+    def step(self) -> "Detection":
+        w = self.x2 - self.x1
+        h = self.y2 - self.y1
+        self.x1 += self.vx
+        self.x2 = self.x1 + w
+        self.y1 += self.vy
+        self.y2 = self.y1 + h
+        if self.x1 < 0.0:
+            self.x1, self.x2, self.vx = 0.0, w, abs(self.vx)
+        if self.x2 > 1.0:
+            self.x2, self.x1, self.vx = 1.0, 1.0 - w, -abs(self.vx)
+        if self.y1 < 0.30:
+            self.y1, self.y2, self.vy = 0.30, 0.30 + h, abs(self.vy)
+        if self.y2 > 0.90:
+            self.y2, self.y1, self.vy = 0.90, 0.90 - h, -abs(self.vy)
+        return Detection(
+            class_name=self.cls,
+            confidence=round(random.uniform(self.conf_lo, self.conf_hi), 3),
+            bbox=[round(self.x1, 3), round(self.y1, 3),
+                  round(self.x2, 3), round(self.y2, 3)],
+        )
+
+
 class VisionProcessor:
     """
     Edge-server vision pipeline.
@@ -53,6 +90,10 @@ class VisionProcessor:
         self._backend = self._init_backend(backend)
         self._frame_count = 0
         self._total_ms    = 0.0
+        n = random.randint(3, 5)
+        self._sim_objects: List[_SimObject] = [
+            _SimObject(random.choice(_ROAD_SCENE_CLASSES)) for _ in range(n)
+        ]
 
     # ------------------------------------------------------------------ #
     def _init_backend(self, requested: str) -> str:
@@ -118,19 +159,7 @@ class VisionProcessor:
 
     # ------------------------------------------------------------------ #
     def _synthetic_detections(self) -> List[Detection]:
-        n = random.randint(2, 5)
-        pool = random.sample(_ROAD_SCENE_CLASSES, min(n, len(_ROAD_SCENE_CLASSES)))
-        dets = []
-        for cls, lo, hi in pool:
-            x1 = random.uniform(0.0, 0.65)
-            y1 = random.uniform(0.40, 0.72)
-            x2 = min(1.0, x1 + random.uniform(0.08, 0.24))
-            y2 = min(1.0, y1 + random.uniform(0.06, 0.18))
-            dets.append(Detection(
-                class_name=cls,
-                confidence=round(random.uniform(lo, hi), 3),
-                bbox=[round(x1, 3), round(y1, 3), round(x2, 3), round(y2, 3)],
-            ))
+        dets = [obj.step() for obj in self._sim_objects]
         return sorted(dets, key=lambda d: -d.confidence)
 
     @property

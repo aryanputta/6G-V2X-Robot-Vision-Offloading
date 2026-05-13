@@ -74,7 +74,7 @@ class Track:
         self.id = tid; self.bbox = bbox
         self.label = label; self.conf = conf; self.age = 0
         self.color = _PALETTE[tid % len(_PALETTE)]
-        self.trail = deque(maxlen=20)
+        self.trail = deque(maxlen=8)
         self.trail.append(((bbox[0] + bbox[2]) / 2, (bbox[1] + bbox[3]) / 2))
         self.missing_frames = 0
 
@@ -84,12 +84,27 @@ class Track:
         self.trail.append(((bbox[0] + bbox[2]) / 2, (bbox[1] + bbox[3]) / 2))
 
 
+def _nms(dets, iou_thr=0.5):
+    """Remove lower-confidence detections that heavily overlap a higher one."""
+    keep = []
+    for i, d in enumerate(dets):
+        dominated = False
+        for j in keep:
+            if _iou(d["bbox"], dets[j]["bbox"]) > iou_thr:
+                dominated = True
+                break
+        if not dominated:
+            keep.append(i)
+    return [dets[i] for i in keep]
+
+
 class Tracker:
-    def __init__(self, iou_thr=0.25, max_missing=8):
+    def __init__(self, iou_thr=0.45, max_missing=3):
         self.iou_thr = iou_thr; self.max_missing = max_missing
         self._tracks: Dict[int, Track] = {}; self._nid = 1
 
     def update(self, dets) -> List[Track]:
+        dets = _nms([d for d in dets if d.get("confidence", 0) >= 0.60], iou_thr=0.45)
         unmatched = set(self._tracks)
         for det in dets:
             bbox = det.get("bbox", [])
@@ -189,28 +204,31 @@ def _annotate(frame: np.ndarray, tracks: List[Track], rtt: float,
         c = tk.color
 
         # dim stale tracks (for 4G demo — missed detections)
-        if stale and tk.missing_frames > 0:
-            c = tuple(max(0, v - 80) for v in c)
+        alpha = 0.5 if (stale and tk.missing_frames > 0) else 1.0
+        c_dim = tuple(int(v * alpha) for v in c)
 
-        cv2.rectangle(out, (x1, y1), (x2, y2), c, 2)
+        cv2.rectangle(out, (x1, y1), (x2, y2), c_dim, 2)
 
-        # trail
+        # trail — fade from dim to full color
         pts = [(int(px * W), int(py * H)) for px, py in tk.trail]
-        for j in range(1, len(pts)):
-            cv2.line(out, pts[j - 1], pts[j], c, 2)
+        n_pts = len(pts)
+        for j in range(1, n_pts):
+            fade = j / n_pts
+            tc = tuple(int(v * fade * alpha) for v in c)
+            cv2.line(out, pts[j - 1], pts[j], tc, 1)
 
-        # label
+        # label — compact, above the box
         tag = f"#{tk.id} {tk.label}"
-        tw = cv2.getTextSize(tag, cv2.FONT_HERSHEY_SIMPLEX, 0.4, 1)[0][0]
-        ty = max(16, y1)
-        cv2.rectangle(out, (x1, ty - 14), (x1 + tw + 4, ty), c, -1)
-        cv2.putText(out, tag, (x1 + 2, ty - 2),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.4, (255, 255, 255), 1)
+        (tw, th), _ = cv2.getTextSize(tag, cv2.FONT_HERSHEY_SIMPLEX, 0.38, 1)
+        lx = max(0, x1)
+        ly = max(th + 4, y1 - 2)
+        cv2.rectangle(out, (lx, ly - th - 3), (lx + tw + 4, ly + 1), c_dim, -1)
+        cv2.putText(out, tag, (lx + 2, ly - 2),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.38, (255, 255, 255), 1, cv2.LINE_AA)
 
     # top HUD
-    gen_color = {NetworkGen.FOUR_G: (60, 60, 220),
-                 NetworkGen.FIVE_G: (50, 180, 220),
-                 NetworkGen.SIX_G: (50, 220, 80)}.get(net_gen, (200, 200, 200))
+    gen_color = {"4G": (60, 60, 220), "5G": (50, 180, 220),
+                 "6G": (50, 220, 80)}.get(net_gen, (200, 200, 200))
     cv2.rectangle(out, (0, 0), (W, 48), (18, 18, 18), -1)
     cv2.putText(out, f"{net_gen} Network  —  RTT {rtt:.0f}ms",
                 (6, 18), cv2.FONT_HERSHEY_SIMPLEX, 0.52, gen_color, 1, cv2.LINE_AA)
@@ -313,7 +331,7 @@ def _start_server(port: int) -> None:
         loop.run_until_complete(srv.run())
 
     threading.Thread(target=_run, daemon=True).start()
-    if not _wait_for_port("localhost", port, 30.0):
+    if not _wait_for_port("localhost", port, 60.0):
         print(f"[ERROR] Server failed to start on port {port}")
         sys.exit(1)
 
@@ -355,8 +373,8 @@ def run(input_path: str, output_path: str, thumb_path: str,
 
     pipe_4g = Pipeline(f"ws://localhost:{port}", NetworkGen.FOUR_G)
     pipe_6g = Pipeline(f"ws://localhost:{port}", NetworkGen.SIX_G)
-    tracker_4g = Tracker(max_missing=12)   # 4G: allow more missing frames
-    tracker_6g = Tracker(max_missing=4)
+    tracker_4g = Tracker(iou_thr=0.45, max_missing=3)
+    tracker_6g = Tracker(iou_thr=0.45, max_missing=3)
 
     rtt_4g_hist: deque = deque(maxlen=60)
     rtt_6g_hist: deque = deque(maxlen=60)

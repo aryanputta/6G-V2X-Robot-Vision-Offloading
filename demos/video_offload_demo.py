@@ -79,7 +79,7 @@ class Track:
         self.conf  = conf
         self.age   = 0
         self.color = _PALETTE[tid % len(_PALETTE)]
-        self.trail: deque = deque(maxlen=25)
+        self.trail: deque = deque(maxlen=10)
         cx = (bbox[0] + bbox[2]) / 2
         cy = (bbox[1] + bbox[3]) / 2
         self.trail.append((cx, cy))
@@ -94,6 +94,17 @@ class Track:
         self.trail.append((cx, cy))
 
 
+def _nms(dets: List[dict], iou_thr: float = 0.45) -> List[dict]:
+    keep = []
+    for i, d in enumerate(dets):
+        if d.get("confidence", 0) < 0.60:
+            continue
+        dominated = any(_iou(d["bbox"], dets[j]["bbox"]) > iou_thr for j in keep)
+        if not dominated:
+            keep.append(i)
+    return [dets[i] for i in keep]
+
+
 class IouTracker:
     """
     Lightweight IoU-based multi-object tracker.
@@ -101,7 +112,7 @@ class IouTracker:
     Runs entirely on the robot (Raspberry Pi viable).
     """
 
-    def __init__(self, iou_threshold: float = 0.25, max_age: int = 6):
+    def __init__(self, iou_threshold: float = 0.45, max_age: int = 3):
         self.iou_threshold = iou_threshold
         self.max_age = max_age
         self._tracks: Dict[int, Track] = {}
@@ -109,6 +120,7 @@ class IouTracker:
 
     def update(self, detections: List[dict]) -> List[Track]:
         """Match new detections to existing tracks; return active tracks."""
+        detections = _nms(detections)
         unmatched_tracks = set(self._tracks.keys())
         matched_det_idx  = set()
 
@@ -148,39 +160,30 @@ class IouTracker:
 # Frame annotator
 # ──────────────────────────────────────────────────────────────────────────────
 
-def _draw_tracks(frame: np.ndarray, tracks: List[Track],
-                 W: int, H: int, alpha: float = 0.85):
-    overlay = frame.copy()
+def _draw_tracks(frame: np.ndarray, tracks: List[Track], W: int, H: int):
     for tk in tracks:
         x1 = int(tk.bbox[0] * W);  y1 = int(tk.bbox[1] * H)
         x2 = int(tk.bbox[2] * W);  y2 = int(tk.bbox[3] * H)
         c  = tk.color
 
-        # translucent fill
-        cv2.rectangle(overlay, (x1, y1), (x2, y2), c, -1)
-        cv2.addWeighted(overlay, 0.15, frame, 0.85, 0, frame)
-        overlay = frame.copy()
-
-        # border
         cv2.rectangle(frame, (x1, y1), (x2, y2), c, 2)
 
-        # tracking trail (normalized → pixel)
-        trail_pts = [
-            (int(px * W), int(py * H))
-            for px, py in tk.trail
-        ]
-        for j in range(1, len(trail_pts)):
-            fade = int(255 * j / len(trail_pts))
-            cv2.line(frame, trail_pts[j - 1], trail_pts[j],
-                     (min(c[0], fade), min(c[1], fade), min(c[2], fade)), 2)
+        # fading trail
+        trail_pts = [(int(px * W), int(py * H)) for px, py in tk.trail]
+        n = len(trail_pts)
+        for j in range(1, n):
+            fade = j / n
+            tc = tuple(int(v * fade) for v in c)
+            cv2.line(frame, trail_pts[j - 1], trail_pts[j], tc, 1)
 
-        # label tag
-        tag = f"#{tk.id} {tk.label} {tk.conf:.2f}"
-        tw, th = cv2.getTextSize(tag, cv2.FONT_HERSHEY_SIMPLEX, 0.45, 1)[0]
-        tag_y = max(th + 4, y1)
-        cv2.rectangle(frame, (x1, tag_y - th - 4), (x1 + tw + 4, tag_y), c, -1)
-        cv2.putText(frame, tag, (x1 + 2, tag_y - 2),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.45, (255, 255, 255), 1)
+        # compact label
+        tag = f"#{tk.id} {tk.label}"
+        (tw, th), _ = cv2.getTextSize(tag, cv2.FONT_HERSHEY_SIMPLEX, 0.40, 1)
+        lx = max(0, x1)
+        ly = max(th + 4, y1 - 2)
+        cv2.rectangle(frame, (lx, ly - th - 3), (lx + tw + 4, ly + 1), c, -1)
+        cv2.putText(frame, tag, (lx + 2, ly - 2),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.40, (255, 255, 255), 1, cv2.LINE_AA)
 
     return frame
 
@@ -339,7 +342,7 @@ def _start_edge_server(port: int = 8766):
     t = threading.Thread(target=_run, daemon=True)
     t.start()
     # Wait until the port is actually accepting connections (handles slow YOLO init)
-    if not _wait_for_port("localhost", port, timeout=30.0):
+    if not _wait_for_port("localhost", port, timeout=60.0):
         print(f"[ERROR] Edge server failed to start on port {port}")
         sys.exit(1)
     return loop
