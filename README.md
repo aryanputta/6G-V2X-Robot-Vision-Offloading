@@ -9,12 +9,6 @@
 > **Left:** 4G LTE — 61ms latency, 16fps effective, stale detections  
 > **Right:** 6G Sub-THz — 10ms latency, 98fps effective, smooth tracking
 
-https://github.com/aryanputta/6g/assets/before_after_comparison.mp4
-
-<video src="https://raw.githubusercontent.com/aryanputta/6g/main/assets/before_after_comparison.mp4" controls width="100%">
-  <a href="https://raw.githubusercontent.com/aryanputta/6g/main/assets/before_after_comparison.mp4">▶ Watch Before/After Comparison (4G vs 6G)</a>
-</video>
-
 ![Before/After Comparison — 4G (61ms, 16fps) vs 6G (10ms, 98fps)](https://raw.githubusercontent.com/aryanputta/6g/main/assets/before_after_thumb.jpg)
 
 ---
@@ -46,9 +40,9 @@ Autonomous vehicles need high-frequency, high-accuracy environment sensing — i
 | Approach | RTT | Effective FPS | Problem |
 |---|---|---|---|
 | Onboard GPU (NVIDIA Orin) | — | ~30fps | $500–$2000/unit, power-hungry |
-| 4G LTE offload | ~61ms | **16fps** ❌ | Too slow — dangerous at highway speed |
-| 5G offload | ~15ms | **67fps** ⚠️ | Marginal, unreliable in handoff zones |
-| **6G offload (this project)** | **~10ms** | **98fps** ✅ | Safe margin — and robot needs no GPU |
+| 4G LTE offload | ~61ms | **16fps**  | Too slow — dangerous at highway speed |
+| 5G offload | ~15ms | **67fps**  | Marginal, unreliable in handoff zones |
+| **6G offload (this project)** | **~10ms** | **98fps**  | Safe margin — and robot needs no GPU |
 
 ---
 
